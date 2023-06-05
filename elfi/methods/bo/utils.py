@@ -94,10 +94,12 @@ def minimize(fun,
     # Run the optimisation from each initialization point.
     locs = []
     vals = np.empty(n_start_points)
+    options = {'maxiter': maxiter}
     for i in range(n_start_points):
         result = scipy.optimize.minimize(fun, start_points[i, :],
                                          method=method, jac=grad,
-                                         bounds=bounds, constraints=constraints)
+                                         bounds=bounds, constraints=constraints,
+                                         options=options)
         locs.append(result['x'])
         vals[i] = result['fun']
 
