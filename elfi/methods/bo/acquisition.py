@@ -298,6 +298,7 @@ class LCBSC(AcquisitionBase):
         value = grad_mean - 0.5 * grad_var * np.sqrt(self._beta(t) / var)
         if self.additive_cost is not None:
             value += self.additive_cost.evaluate_gradient(x)
+        # logger.debug('eval gradient output {}'.format(value))
         return value
 
 

@@ -39,6 +39,8 @@ class BayesianOptimization(ParameterInference):
                  batch_size=1,
                  batches_per_acquisition=None,
                  async_acq=False,
+                 virtual_deriv=False,
+                 min_point_dist=0.01, adaptive=True,
                  **kwargs):
         """Initialize Bayesian optimization.
 
@@ -114,6 +116,13 @@ class BayesianOptimization(ParameterInference):
         self.state['n_evidence'] = self.n_precomputed_evidence
         self.state['last_GP_update'] = self.n_initial_evidence
         self.state['acquisition'] = []
+        self.virtual_deriv = virtual_deriv
+        self.derivn = []
+        self.adaptive = adaptive
+        # min_point_dist is a multiplier of dimension range so .01 is 1%
+        self.min_point_dist = min_point_dist
+        if self.virtual_deriv:
+            self.target_model.virtual_deriv = True
 
     def _resolve_initial_evidence(self, initial_evidence):
         # Some sensibility limit for starting GP regression
@@ -220,6 +229,55 @@ class BayesianOptimization(ParameterInference):
         if optimize:
             self.state['last_GP_update'] = self.target_model.n_evidence
 
+    def _give_border(self, x):
+        '''
+        Returns a projection of the given point to the nearest border of the optimization area
+        first returned vector is the projected points, second is index of the projected dimension,
+        third is the distance between the projected and original point and fourth is the sign of
+        the virtual derivative observation that should be added to the projected point.
+        '''
+        # logger.debug('give border input x: {}'.format(x))
+        mid = np.sum(self.target_model.bounds, axis=1)/2.
+        x_new = np.copy(x)
+        tmp = np.zeros(x.shape)
+        bounds = np.array(self.target_model.bounds)
+        tmp[x<=mid] = (x-bounds[:,0].T)[x<=mid]
+        tmp[x>mid] = (bounds[:,1].T-x)[x>mid]
+        ind = np.argmin(tmp)
+        x_new[:,ind] = bounds[ind,0] if x[:,ind] <= mid[ind] else bounds[ind,1]
+        sign = -1. if x[:,ind] <= mid[ind] else +1.
+        return x_new, ind, tmp[:,ind], sign
+    
+    def _give_distance_to_virtual_observation(self, x):
+        '''
+        Returns the smallest distance to virtual derivative observation of given point (and index of that observation)
+        '''
+        X = self.target_model.virtX[1:]
+        min_dist = 1.
+        i,j = None, None
+        for dim in range(len(X)):
+            for obs in range(X[dim].shape[0]):
+                dist = np.linalg.norm(X[dim][obs,:]-x)
+                if dist < min_dist:
+                    min_dist=dist
+                    i,j = dim, obs
+        return min_dist, i, j
+    
+    def _get_point_monotonicity(self, x, dim):
+        '''
+        Given location x, gives the direction of gradient sign that the already existing data supports the most
+        '''
+        x_new =  np.c_[x, np.array([[dim+1]])]
+        ind=np.array([dim+1])
+        tmp = {'output_index': ind, 'trials': np.ones(ind.shape)}
+        y = [-1, 0, 1]
+        p = [None]*3
+        for i in range(len(y)):
+            p[i] = self.target_model._gp.log_predictive_density(x_new, np.array([[y[i]]]), Y_metadata = tmp)
+        k = y[np.argmax(p)]
+        logger.debug("Data says that the sign of the derivative observation should be: {} (Probabilities of signs [-1,0,1]={})".format(k, np.exp(p).T))
+        return k
+
     def prepare_new_batch(self, batch_index):
         """Prepare values for a new batch.
 
@@ -244,8 +302,54 @@ class BayesianOptimization(ParameterInference):
         # Take the next batch from the acquisition_batch
         acquisition = self.state['acquisition']
         if len(acquisition) == 0:
-            acquisition = self.acquisition_method.acquire(
-                self.acq_batch_size, t=t)
+            # starting process for adding virtual derivatives but have to handle multiple points if doing parallel
+            # the algorithm I'm copying just keeps adding points until a real point is added, but here I think
+            # iterating through the acquisition points is necessary until we don't get boundary points or some
+            # number of virtual points is added (10 is used in the code I'm adapting)
+            if self.virtual_deriv:
+                for num_virt_points in range(10): # try adding up to 10 virtual points
+                    logger.debug('Attempting acquisition')
+                    acquisition = self.acquisition_method.acquire(self.acq_batch_size, t=t)
+                    need_virt_point = False
+                    for acq_point in acquisition: # check if any acquisition points are near boundary
+                        acq_point_arr = np.array([acq_point])
+                        x_border, border, dist, sign = self._give_border(acq_point_arr)
+                        virtual_dist, dim, obs = self._give_distance_to_virtual_observation(acq_point_arr)
+                        min_dist = self.min_point_dist * (self.target_model.bounds[border][1] - self.target_model.bounds[border][0])
+                        if dim is not None:
+                            virtual_min_dist = self.min_point_dist * (self.target_model.bounds[dim][1] - self.target_model.bounds[dim][0])
+                        else:
+                            virtual_min_dist = None
+                        data_support=True
+                        if self.adaptive:
+                            data_support = (np.absolute(self._get_point_monotonicity(acq_point_arr, border) - sign) < 0.1) #True if data supports that sign of the derivative observation should be same as proposed
+                        #Virtual derivative observation is added only if the point to be added is far enough from already present virtual observations,
+                        #close enough to the border, next virtual observation is not forced and data supports the sign of the observation
+                        logger.debug('For point {}, data_support {}, dis {}, min_dis {}, virt dist {}, virtual min dist {}'.format(acq_point, data_support, dist, min_dist, virtual_dist, virtual_min_dist))
+                        if ((virtual_min_dist is None) or (virtual_dist > virtual_min_dist)) and (dist < min_dist) and  data_support:
+                            need_virt_point = True
+                            break
+                    if not need_virt_point:
+                        logger.debug('Acquisition is good')
+                        for acq_point in acquisition:
+                            acq_point_arr = np.array([acq_point])
+                            virtual_dist, dim, obs = self._give_distance_to_virtual_observation(acq_point_arr)
+                            if dim is not None:
+                                virtual_min_dist = self.min_point_dist * (self.target_model.bounds[dim][1] - self.target_model.bounds[dim][0])
+                            else:
+                                virtual_min_dist = None
+                            if (virtual_min_dist is not None) and (virtual_min_dist < min_dist) and (self.adaptive==True):
+                                logger.debug('remove virtual point {}'.format(obs))
+                                self.target_model.virtX[dim+1] = np.delete(self.target_model.virtX[dim+1], obs ,0)
+                                self.target_model.virtY[dim+1] = np.delete(self.target_model.virtY[dim+1], obs ,0)
+                        break # stop the for loop because the current acquisition is good
+                    logger.debug('Updating gp with virtual observations on border {}'.format(border))
+                    self.target_model.virtX[border+1] = np.append(self.target_model.virtX[border+1], x_border, axis=0)
+                    self.target_model.virtY[border+1] = np.append(self.target_model.virtY[border+1], np.array([[sign]]), axis=0)
+                    self.target_model.update_virt() # update GP for next acquisition attempt
+            else:
+                acquisition = self.acquisition_method.acquire(self.acq_batch_size, t=t)
+
 
         batch = arr2d_to_batch(
             acquisition[:self.batch_size], self.target_model.parameter_names)
@@ -459,6 +563,8 @@ class BOLFI(BayesianOptimization):
                 'Model is not fitted yet, please see the `fit` method.')
 
         prior = ModelPrior(self.model, parameter_names=self.target_model.parameter_names)
+        if self.virtual_deriv:
+            self.target_model.extract_simple_model()
         return BolfiPosterior(self.target_model, threshold=threshold, prior=prior)
 
     def sample(self,

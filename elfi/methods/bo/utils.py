@@ -3,7 +3,9 @@
 import numpy as np
 import scipy.optimize
 from scipy.optimize import differential_evolution
+import logging
 
+logger = logging.getLogger(__name__)
 
 # TODO: remove or combine to minimize
 def stochastic_optimization(fun, bounds, maxiter=1000, polish=True, seed=0):
@@ -96,6 +98,7 @@ def minimize(fun,
     vals = np.empty(n_start_points)
     options = {'maxiter': maxiter}
     for i in range(n_start_points):
+        # logger.debug('start_points {}'.format(start_points))
         result = scipy.optimize.minimize(fun, start_points[i, :],
                                          method=method, jac=grad,
                                          bounds=bounds, constraints=constraints,

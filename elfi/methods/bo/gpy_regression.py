@@ -7,10 +7,30 @@ import logging
 
 import GPy
 import numpy as np
+import time
+from scipy import special
 
 logger = logging.getLogger(__name__)
 logging.getLogger("GP").setLevel(logging.WARNING)  # GPy library logger
 
+
+#Dirty hack to make GPy work for us (we want N to be 1, not [[1]]) (bug in GPy!)
+# from https://github.com/esiivola/vdsobo/blob/master/optimization.py
+def logpdf_link(self, inv_link_f, y, Y_metadata=None):
+    # I think this only alters the next line and if for when 'trials' is not present
+    N = np.ones(y.shape) if Y_metadata is None else Y_metadata.get('trials', np.ones(y.shape))
+    # logger.debug('logpdf N: {}'.format(N))
+    np.testing.assert_array_equal(N.shape, y.shape)
+
+    nchoosey = special.gammaln(N+1) - special.gammaln(y+1) - special.gammaln(N-y+1)
+    Ny = N-y
+    t1 = np.zeros(y.shape)
+    t2 = np.zeros(y.shape)
+    t1[y>0] = y[y>0]*np.log(inv_link_f[y>0])
+    t2[Ny>0] = Ny[Ny>0]*np.log(1.-inv_link_f[Ny>0])
+    
+    return nchoosey + t1 + t2
+GPy.likelihoods.Binomial.logpdf_link = logpdf_link #This is the dirty part
 
 class GPyRegression:
     """Gaussian Process regression using the GPy library.
@@ -86,6 +106,9 @@ class GPyRegression:
 
         self._rbf_is_cached = False
         self.is_sampling = False  # set to True once in sampling phase
+        self.virtual_deriv = False
+        self.virtX = []
+        self.virtY = []
 
     def __str__(self):
         """Return GPy's __str__."""
@@ -141,10 +164,20 @@ class GPyRegression:
         else:
             self._rbf_is_cached = False  # in case one resumes fitting the GP after sampling
 
-        if noiseless:
-            return self._gp.predict_noiseless(x)
+        if self.virtual_deriv:
+            if noiseless:
+                # logger.debug('model predict output: {}'.format(self._gp.predict_noiseless(x)))
+                return self._gp.predict_noiseless([x])
+            else:
+                # logger.debug('model predict output: {}'.format(self._gp.predict(x)))
+                return self._gp.predict([x])
         else:
-            return self._gp.predict(x)
+            if noiseless:
+                # logger.debug('model predict output: {}'.format(self._gp.predict_noiseless(x)))
+                return self._gp.predict_noiseless(x)
+            else:
+                # logger.debug('model predict output: {}'.format(self._gp.predict(x)))
+                return self._gp.predict(x)
 
     # TODO: find a more general solution
     # cache some RBF-kernel-specific values for faster sampling
@@ -217,8 +250,12 @@ class GPyRegression:
             dvdx = np.linalg.solve(self._rbf_woodbury_chol, dkdx)
             grad_var = -2. * dvdx.T.dot(v).T
         else:
-            grad_mu, grad_var = self._gp.predictive_gradients(x)
-            grad_mu = grad_mu[:, :, 0]  # Assume 1D output (distance in ABC)
+            if self.virtual_deriv:
+                grad_mu, grad_var = self._gp.predictive_gradients([x])
+            else:
+                grad_mu, grad_var = self._gp.predictive_gradients(x)
+                grad_mu = grad_mu[:, :, 0]  # Assume 1D output (distance in ABC)
+            # logger.debug('predictive gradient output: {}\n{}'.format(grad_mu, grad_var))
 
         return grad_mu, grad_var
 
@@ -248,14 +285,37 @@ class GPyRegression:
             if self.gp_params.get('noise_var') is None and self.gp_params.get(
                     'mean_function') is None:
                 self._kernel_is_default = True
-
         else:
             kernel = self.gp_params.get('kernel')
 
-        noise_var = self.gp_params.get('noise_var') or np.max(y)**2. / 100.
-        mean_function = self.gp_params.get('mean_function')
-        self._gp = self._make_gpy_instance(
-            x, y, kernel=kernel, noise_var=noise_var, mean_function=mean_function)
+        self.kernel = kernel
+
+        if self.virtual_deriv:
+            self.virtX = [x] + [np.empty((0,self.input_dim))]*self.input_dim
+            self.virtY = [y] + [np.empty((0,1))]*self.input_dim
+            kern = self.kernel.copy()
+            kern_list = [kern] + [GPy.kern.DiffKern(kern,i) for i in range(self.input_dim)]
+            lik_list = [self.get_model_likelihood()]
+            probit = GPy.likelihoods.Binomial(gp_link = GPy.likelihoods.link_functions.ScaledProbit(nu=1000))
+            lik_list += [probit for i in range(self.input_dim)]
+            start = time.time()
+            # need to be able to add in or remove virtual observations
+            self._gp = GPy.models.MultioutputGP(X_list = self.virtX, Y_list = self.virtY,
+                                                  kernel_list=kern_list, likelihood_list=lik_list,
+                                                  inference_method=GPy.inference.latent_function_inference.EP())
+            end = time.time()
+            logger.debug("Creating GP took: {}".format(str(end-start)))
+            start = time.time()
+            self.optimize()
+            end = time.time()
+            logger.debug("Optimizing GP took: {}".format(str(end-start)))
+        else:
+            noise_var = self.gp_params.get('noise_var') or np.max(y)**2. / 100.
+            mean_function = self.gp_params.get('mean_function')
+            # create copy of object so that object can be pickled
+            self._gp = self._make_gpy_instance(
+                x, y, kernel=kernel.copy(), noise_var=noise_var, mean_function=mean_function)
+            self.optimize()
 
     def _default_kernel(self, x, y):
         # Some heuristics to choose kernel parameters based on the initial data
@@ -283,6 +343,17 @@ class GPyRegression:
         return GPy.models.GPRegression(
             X=x, Y=y, kernel=kernel, noise_var=noise_var, mean_function=mean_function)
 
+    def get_model_likelihood(self, noise = 0.0):
+        '''
+        Returns gaussian likelihood with fixed noise.
+        '''
+        lik = GPy.likelihoods.Gaussian(variance=noise)
+        if noise < 0.00001:
+            lik.variance.constrain_fixed(value=1e-6,warning=True,trigger_parent=True)
+        else:
+            lik.variance.constrain_fixed(value=noise,warning=True,trigger_parent=True)
+        return lik
+
     def update(self, x, y, optimize=False):
         """Update the GP model with new data.
 
@@ -300,6 +371,26 @@ class GPyRegression:
 
         if self._gp is None:
             self._init_gp(x, y)
+        elif self.virtual_deriv:
+            self.virtX[0] = np.r_[self.virtX[0], x]
+            self.virtY[0] = np.r_[self.virtY[0], y]
+            # not certain about the model and variance here compared to the bolfi code
+            kern = self.kernel.copy()
+            kern_list = [kern] + [GPy.kern.DiffKern(kern,i) for i in range(self.input_dim)]
+            lik_list = [self.get_model_likelihood()]
+            probit = GPy.likelihoods.Binomial(gp_link = GPy.likelihoods.link_functions.ScaledProbit(nu=1000))
+            lik_list += [probit for i in range(self.input_dim)]
+            start = time.time()
+            # need to be able to add in or remove virtual observations
+            self._gp = GPy.models.MultioutputGP(X_list = self.virtX, Y_list = self.virtY,
+                                                  kernel_list=kern_list, likelihood_list=lik_list,
+                                                  inference_method=GPy.inference.latent_function_inference.EP())
+            end = time.time()
+            logger.debug("Creating GP took: {}".format(str(end-start)))
+            start = time.time()
+            self.optimize()
+            end = time.time()
+            logger.debug("Optimizing GP took: {}".format(str(end-start)))
         else:
             # Reconstruct with new data
             x = np.r_[self._gp.X, x]
@@ -310,10 +401,38 @@ class GPyRegression:
             mean_function = self._gp.mean_function.copy() if self._gp.mean_function else None
             self._gp = self._make_gpy_instance(
                 x, y, kernel=kernel, noise_var=noise_var, mean_function=mean_function)
-
-        if optimize:
             self.optimize()
 
+    def update_virt(self):
+        if not self.virtual_deriv:
+            raise Exception('update_virt is not valid for a model without virtual observations')
+
+        if self._gp is None:
+            self._init_gp(x, y)
+        else:
+            kern = self.kernel.copy()
+            kern_list = [kern] + [GPy.kern.DiffKern(kern,i) for i in range(self.input_dim)]
+            lik_list = [self.get_model_likelihood()]
+            probit = GPy.likelihoods.Binomial(gp_link = GPy.likelihoods.link_functions.ScaledProbit(nu=1000))
+            lik_list += [probit for i in range(self.input_dim)]
+            start = time.time()
+            # need to be able to add in or remove virtual observations
+            self._gp = GPy.models.MultioutputGP(X_list = self.virtX, Y_list = self.virtY,
+                                                  kernel_list=kern_list, likelihood_list=lik_list,
+                                                  inference_method=GPy.inference.latent_function_inference.EP())
+            end = time.time()
+            logger.debug("Creating GP took: {}".format(str(end-start)))
+            start = time.time()
+            self.optimize()
+            end = time.time()
+            logger.debug("Optimizing GP took: {}".format(str(end-start)))
+    
+    def extract_simple_model(self):
+        kern = self.kernel.copy()
+        self._gp = GPy.models.GPRegression(X=self.virtX[0], Y=self.virtY[0], kernel=kern)
+        self.optimize()
+        self.virtual_deriv = False
+                        
     def optimize(self):
         """Optimize GP hyperparameters."""
         logger.debug("Optimizing GP hyperparameters")
@@ -332,12 +451,19 @@ class GPyRegression:
     @property
     def X(self):
         """Return input evidence."""
-        return self._gp.X
+        if self.virtual_deriv:
+            # logger.debug('GP X output: {}'.format(self.virtX[0]))
+            return self.virtX[0]
+        else:
+            return self._gp.X
 
     @property
     def Y(self):
         """Return output evidence."""
-        return self._gp.Y
+        if self.virtual_deriv:
+            return self.virtY[0]
+        else:
+            return self._gp.Y
 
     @property
     def noise(self):
