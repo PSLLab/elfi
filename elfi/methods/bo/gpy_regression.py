@@ -110,6 +110,26 @@ class GPyRegression:
         self.virtX = []
         self.virtY = []
 
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        if self.virtual_deriv: # ep stuff doesn't pickle usably
+            del state['_gp']
+        return state
+    
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        if self.virtual_deriv:
+            # init gp
+            kern = self.kernel.copy()
+            kern_list = [kern] + [GPy.kern.DiffKern(kern,i) for i in range(self.input_dim)]
+            lik_list = [self.get_model_likelihood()]
+            probit = GPy.likelihoods.Binomial(gp_link = GPy.likelihoods.link_functions.ScaledProbit(nu=1000))
+            lik_list += [probit for i in range(self.input_dim)]
+            self._gp = GPy.models.MultioutputGP(X_list = self.virtX, Y_list = self.virtY,
+                                                  kernel_list=kern_list, likelihood_list=lik_list,
+                                                  inference_method=GPy.inference.latent_function_inference.EP())
+            self.optimize()
+
     def __str__(self):
         """Return GPy's __str__."""
         return self._gp.__str__()
@@ -416,7 +436,6 @@ class GPyRegression:
             probit = GPy.likelihoods.Binomial(gp_link = GPy.likelihoods.link_functions.ScaledProbit(nu=1000))
             lik_list += [probit for i in range(self.input_dim)]
             start = time.time()
-            # need to be able to add in or remove virtual observations
             self._gp = GPy.models.MultioutputGP(X_list = self.virtX, Y_list = self.virtY,
                                                   kernel_list=kern_list, likelihood_list=lik_list,
                                                   inference_method=GPy.inference.latent_function_inference.EP())

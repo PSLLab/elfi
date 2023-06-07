@@ -325,7 +325,8 @@ class BayesianOptimization(ParameterInference):
                             try:
                                 # ran into some numerical problems, so just skip those?
                                 data_support = (np.absolute(self._get_point_monotonicity(acq_point_arr, border) - sign) < 0.1) #True if data supports that sign of the derivative observation should be same as proposed
-                            except Exception:
+                            except Exception as e:
+                                logger.debug('exception in _get_point_monotonicity {}'.format(e))
                                 data_support = False 
                         #Virtual derivative observation is added only if the point to be added is far enough from already present virtual observations,
                         #close enough to the border, next virtual observation is not forced and data supports the sign of the observation
