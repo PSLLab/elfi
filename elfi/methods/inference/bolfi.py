@@ -322,7 +322,11 @@ class BayesianOptimization(ParameterInference):
                             virtual_min_dist = None
                         data_support=True
                         if self.adaptive:
-                            data_support = (np.absolute(self._get_point_monotonicity(acq_point_arr, border) - sign) < 0.1) #True if data supports that sign of the derivative observation should be same as proposed
+                            try:
+                                # ran into some numerical problems, so just skip those?
+                                data_support = (np.absolute(self._get_point_monotonicity(acq_point_arr, border) - sign) < 0.1) #True if data supports that sign of the derivative observation should be same as proposed
+                            except Exception:
+                                data_support = False 
                         #Virtual derivative observation is added only if the point to be added is far enough from already present virtual observations,
                         #close enough to the border, next virtual observation is not forced and data supports the sign of the observation
                         logger.debug('For point {}, data_support {}, dis {}, min_dis {}, virt dist {}, virtual min dist {}'.format(acq_point, data_support, dist, min_dist, virtual_dist, virtual_min_dist))
@@ -339,7 +343,7 @@ class BayesianOptimization(ParameterInference):
                             else:
                                 virtual_min_dist = None
                             if (virtual_min_dist is not None) and (virtual_min_dist < min_dist) and (self.adaptive==True):
-                                logger.debug('remove virtual point {}'.format(obs))
+                                logger.debug('remove virtual point {} {}'.format(obs, self.target_model.virtX[dim+1]))
                                 self.target_model.virtX[dim+1] = np.delete(self.target_model.virtX[dim+1], obs ,0)
                                 self.target_model.virtY[dim+1] = np.delete(self.target_model.virtY[dim+1], obs ,0)
                         break # stop the for loop because the current acquisition is good
