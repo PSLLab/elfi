@@ -225,9 +225,11 @@ class BayesianOptimization(ParameterInference):
         self._report_batch(batch_index, params, batch[self.target_name])
 
         optimize = self._should_optimize()
-        self.target_model.update(params, batch[self.target_name], optimize)
-        if optimize:
-            self.state['last_GP_update'] = self.target_model.n_evidence
+        # only update GP when current acquisition is done (in case of parallel batches)
+        if len(self.state['acquisition']) == 0:
+            self.target_model.update(params, batch[self.target_name], optimize)
+            if optimize:
+                self.state['last_GP_update'] = self.target_model.n_evidence
 
     def _give_border(self, x):
         '''
@@ -343,7 +345,7 @@ class BayesianOptimization(ParameterInference):
                                 virtual_min_dist = self.min_point_dist * (self.target_model.bounds[dim][1] - self.target_model.bounds[dim][0])
                             else:
                                 virtual_min_dist = None
-                            if (virtual_min_dist is not None) and (virtual_min_dist < min_dist) and (self.adaptive==True):
+                            if (virtual_min_dist is not None) and (virtual_dist < virtual_min_dist) and (self.adaptive==True):
                                 logger.debug('remove virtual point {} {}'.format(obs, self.target_model.virtX[dim+1]))
                                 self.target_model.virtX[dim+1] = np.delete(self.target_model.virtX[dim+1], obs ,0)
                                 self.target_model.virtY[dim+1] = np.delete(self.target_model.virtY[dim+1], obs ,0)
