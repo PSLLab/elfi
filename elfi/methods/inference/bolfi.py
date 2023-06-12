@@ -224,12 +224,15 @@ class BayesianOptimization(ParameterInference):
         params = batch_to_arr2d(batch, self.target_model.parameter_names)
         self._report_batch(batch_index, params, batch[self.target_name])
 
-        optimize = self._should_optimize()
+        # optimize = self._should_optimize()
         # only update GP when current acquisition is done (in case of parallel batches)
-        if len(self.state['acquisition']) == 0:
-            self.target_model.update(params, batch[self.target_name], optimize)
-            if optimize:
-                self.state['last_GP_update'] = self.target_model.n_evidence
+        # logger.debug('pending acquisitions left: {}'.format(self.batches.has_pending))
+        # this is how many batches haven't been submitted so it won't do what I want
+        if not self.batches.has_pending:
+            self.target_model.update(params, batch[self.target_name], True)
+            self.state['last_GP_update'] = self.target_model.n_evidence
+        else:
+            self.target_model.update(params, batch[self.target_name], False)
 
     def _give_border(self, x):
         '''

@@ -109,6 +109,7 @@ class GPyRegression:
         self.virtual_deriv = False
         self.virtX = []
         self.virtY = []
+        self.max_ep_iters = 1e4
 
     def __getstate__(self):
         state = self.__dict__.copy()
@@ -127,7 +128,7 @@ class GPyRegression:
             lik_list += [probit for i in range(self.input_dim)]
             self._gp = GPy.models.MultioutputGP(X_list = self.virtX, Y_list = self.virtY,
                                                   kernel_list=kern_list, likelihood_list=lik_list,
-                                                  inference_method=GPy.inference.latent_function_inference.EP())
+                                                  inference_method=GPy.inference.latent_function_inference.EP(max_iters=self.max_ep_iters))
             self.optimize()
 
     def __str__(self):
@@ -322,7 +323,7 @@ class GPyRegression:
             # need to be able to add in or remove virtual observations
             self._gp = GPy.models.MultioutputGP(X_list = self.virtX, Y_list = self.virtY,
                                                   kernel_list=kern_list, likelihood_list=lik_list,
-                                                  inference_method=GPy.inference.latent_function_inference.EP())
+                                                  inference_method=GPy.inference.latent_function_inference.EP(max_iters=self.max_ep_iters))
             end = time.time()
             logger.debug("Creating GP took: {}".format(str(end-start)))
             start = time.time()
@@ -374,7 +375,7 @@ class GPyRegression:
             lik.variance.constrain_fixed(value=noise,warning=True,trigger_parent=True)
         return lik
 
-    def update(self, x, y, optimize=False):
+    def update(self, x, y, update_gp=False):
         """Update the GP model with new data.
 
         Parameters
@@ -394,41 +395,43 @@ class GPyRegression:
         elif self.virtual_deriv:
             self.virtX[0] = np.r_[self.virtX[0], x]
             self.virtY[0] = np.r_[self.virtY[0], y]
-            # not certain about the model and variance here compared to the bolfi code
-            kern = self.kernel.copy()
-            kern_list = [kern] + [GPy.kern.DiffKern(kern,i) for i in range(self.input_dim)]
-            lik_list = [self.get_model_likelihood()]
-            probit = GPy.likelihoods.Binomial(gp_link = GPy.likelihoods.link_functions.ScaledProbit(nu=1000))
-            lik_list += [probit for i in range(self.input_dim)]
-            start = time.time()
-            # need to be able to add in or remove virtual observations
-            self._gp = GPy.models.MultioutputGP(X_list = self.virtX, Y_list = self.virtY,
-                                                  kernel_list=kern_list, likelihood_list=lik_list,
-                                                  inference_method=GPy.inference.latent_function_inference.EP())
-            end = time.time()
-            logger.debug("Creating GP took: {}".format(str(end-start)))
-            start = time.time()
-            self.optimize()
-            end = time.time()
-            logger.debug("Optimizing GP took: {}".format(str(end-start)))
+            if update_gp:
+                # not certain about the model and variance here compared to the bolfi code
+                kern = self.kernel.copy()
+                kern_list = [kern] + [GPy.kern.DiffKern(kern,i) for i in range(self.input_dim)]
+                lik_list = [self.get_model_likelihood()]
+                probit = GPy.likelihoods.Binomial(gp_link = GPy.likelihoods.link_functions.ScaledProbit(nu=1000))
+                lik_list += [probit for i in range(self.input_dim)]
+                start = time.time()
+                # need to be able to add in or remove virtual observations
+                self._gp = GPy.models.MultioutputGP(X_list = self.virtX, Y_list = self.virtY,
+                                                    kernel_list=kern_list, likelihood_list=lik_list,
+                                                    inference_method=GPy.inference.latent_function_inference.EP(max_iters=self.max_ep_iters))
+                end = time.time()
+                logger.debug("Creating GP took: {}".format(str(end-start)))
+                start = time.time()
+                self.optimize()
+                end = time.time()
+                logger.debug("Optimizing GP took: {}".format(str(end-start)))
         else:
             # Reconstruct with new data
             x = np.r_[self._gp.X, x]
             y = np.r_[self._gp.Y, y]
-            # It seems that GPy will do some optimization unless you make copies of everything
-            kernel = self._gp.kern.copy() if self._gp.kern else None
-            noise_var = self._gp.Gaussian_noise.variance[0]
-            mean_function = self._gp.mean_function.copy() if self._gp.mean_function else None
-            self._gp = self._make_gpy_instance(
-                x, y, kernel=kernel, noise_var=noise_var, mean_function=mean_function)
-            self.optimize()
+            if update_gp:
+                # It seems that GPy will do some optimization unless you make copies of everything
+                kernel = self._gp.kern.copy() if self._gp.kern else None
+                noise_var = self._gp.Gaussian_noise.variance[0]
+                mean_function = self._gp.mean_function.copy() if self._gp.mean_function else None
+                self._gp = self._make_gpy_instance(
+                    x, y, kernel=kernel, noise_var=noise_var, mean_function=mean_function)
+                self.optimize()
 
     def update_virt(self):
         if not self.virtual_deriv:
             raise Exception('update_virt is not valid for a model without virtual observations')
 
         if self._gp is None:
-            self._init_gp(x, y)
+            raise Exception('cannot do virtual update without an existing GP')
         else:
             kern = self.kernel.copy()
             kern_list = [kern] + [GPy.kern.DiffKern(kern,i) for i in range(self.input_dim)]
@@ -438,7 +441,7 @@ class GPyRegression:
             start = time.time()
             self._gp = GPy.models.MultioutputGP(X_list = self.virtX, Y_list = self.virtY,
                                                   kernel_list=kern_list, likelihood_list=lik_list,
-                                                  inference_method=GPy.inference.latent_function_inference.EP())
+                                                  inference_method=GPy.inference.latent_function_inference.EP(max_iters=self.max_ep_iters))
             end = time.time()
             logger.debug("Creating GP took: {}".format(str(end-start)))
             start = time.time()
