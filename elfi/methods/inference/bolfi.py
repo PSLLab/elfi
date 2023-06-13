@@ -322,7 +322,7 @@ class BayesianOptimization(ParameterInference):
                         virtual_dist, dim, obs = self._give_distance_to_virtual_observation(acq_point_arr)
                         min_dist = self.min_point_dist * (self.target_model.bounds[border][1] - self.target_model.bounds[border][0])
                         if dim is not None:
-                            virtual_min_dist = self.min_point_dist * (self.target_model.bounds[dim][1] - self.target_model.bounds[dim][0])
+                            virtual_min_dist = self.min_point_dist*10 * (self.target_model.bounds[dim][1] - self.target_model.bounds[dim][0])
                         else:
                             virtual_min_dist = None
                         data_support=True
@@ -345,7 +345,7 @@ class BayesianOptimization(ParameterInference):
                             acq_point_arr = np.array([acq_point])
                             virtual_dist, dim, obs = self._give_distance_to_virtual_observation(acq_point_arr)
                             if dim is not None:
-                                virtual_min_dist = self.min_point_dist * (self.target_model.bounds[dim][1] - self.target_model.bounds[dim][0])
+                                virtual_min_dist = self.min_point_dist*10 * (self.target_model.bounds[dim][1] - self.target_model.bounds[dim][0])
                             else:
                                 virtual_min_dist = None
                             if (virtual_min_dist is not None) and (virtual_dist < virtual_min_dist) and (self.adaptive==True):
