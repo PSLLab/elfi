@@ -257,7 +257,7 @@ class LCBSC(AcquisitionBase):
         # Start from 0
         t += 1
         d = self.model.input_dim
-        return 2 * np.log(t**(2 * d + 2) * np.pi**2 / (3 * self.delta))
+        return 2 * np.log(t**(d / 2 + 2) * np.pi**2 / (3 * self.delta))
 
     def evaluate(self, x, t=None):
         """Evaluate the Lower confidence bound selection criterion.
