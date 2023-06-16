@@ -44,6 +44,7 @@ class GPyRegression:
                  optimizer="scg",
                  max_opt_iters=50,
                  gp=None,
+                 normalize=False,
                  **gp_params):
         """Initialize GPyRegression.
 
@@ -109,6 +110,8 @@ class GPyRegression:
         self.virtual_deriv = False
         self.virtX = []
         self.virtY = []
+        self.standardized_virtY = []
+        self.normalize = normalize
         self.max_ep_iters = 1e4
 
     def __getstate__(self):
@@ -126,9 +129,21 @@ class GPyRegression:
             lik_list = [self.get_model_likelihood()]
             probit = GPy.likelihoods.Binomial(gp_link = GPy.likelihoods.link_functions.ScaledProbit(nu=1000))
             lik_list += [probit for i in range(self.input_dim)]
-            self._gp = GPy.models.MultioutputGP(X_list = self.virtX, Y_list = self.virtY,
-                                                  kernel_list=kern_list, likelihood_list=lik_list,
-                                                  inference_method=GPy.inference.latent_function_inference.EP(max_iters=self.max_ep_iters))
+            if self.normalize:
+                y_mean = self.virtY[0].mean(axis=0)
+                y_std = self.virtY[0].std(axis=0)
+                if np.any(y_std == 0):
+                    logger.debug('Y has some zero sd {}'.format(y_std))
+                    y_std[np.where(y_std==0)] = 1
+                self.standardized_virtY = self.virtY.copy()
+                self.standardized_virtY[0] = (self.virtY[0] - y_mean) / y_std 
+                self._gp = GPy.models.MultioutputGP(X_list = self.virtX, Y_list = self.standardized_virtY,
+                                                    kernel_list=kern_list, likelihood_list=lik_list,
+                                                    inference_method=GPy.inference.latent_function_inference.EP(max_iters=self.max_ep_iters))
+            else:
+                self._gp = GPy.models.MultioutputGP(X_list = self.virtX, Y_list = self.virtY,
+                                                    kernel_list=kern_list, likelihood_list=lik_list,
+                                                    inference_method=GPy.inference.latent_function_inference.EP(max_iters=self.max_ep_iters))
             self.optimize()
 
     def __str__(self):
@@ -139,7 +154,7 @@ class GPyRegression:
         """Return GPy's __str__."""
         return self.__str__()
 
-    def predict(self, x, noiseless=False):
+    def predict(self, x, noiseless=False, reverse_normalize=False):
         """Return the GP model mean and variance at x.
 
         Parameters
@@ -186,19 +201,20 @@ class GPyRegression:
             self._rbf_is_cached = False  # in case one resumes fitting the GP after sampling
 
         if self.virtual_deriv:
-            if noiseless:
-                # logger.debug('model predict output: {}'.format(self._gp.predict_noiseless(x)))
-                return self._gp.predict_noiseless([x])
-            else:
-                # logger.debug('model predict output: {}'.format(self._gp.predict(x)))
-                return self._gp.predict([x])
+            x = [x]
+        if noiseless:
+            # logger.debug('model predict output: {}'.format(self._gp.predict_noiseless(x)))
+            mu, var = self._gp.predict_noiseless(x)
         else:
-            if noiseless:
-                # logger.debug('model predict output: {}'.format(self._gp.predict_noiseless(x)))
-                return self._gp.predict_noiseless(x)
-            else:
-                # logger.debug('model predict output: {}'.format(self._gp.predict(x)))
-                return self._gp.predict(x)
+            # logger.debug('model predict output: {}'.format(self._gp.predict(x)))
+            mu, var = self._gp.predict(x)
+        if self.normalize and reverse_normalize and self.virtual_deriv:
+            # normal GP handles reverse already
+            y_mean = self.virtY[0].mean(axis=0)
+            y_std = self.virtY[0].std(axis=0)
+            mu = mu*y_std + y_mean
+            var = var*(y_std**2)
+        return mu, var
 
     # TODO: find a more general solution
     # cache some RBF-kernel-specific values for faster sampling
@@ -321,9 +337,21 @@ class GPyRegression:
             lik_list += [probit for i in range(self.input_dim)]
             start = time.time()
             # need to be able to add in or remove virtual observations
-            self._gp = GPy.models.MultioutputGP(X_list = self.virtX, Y_list = self.virtY,
-                                                  kernel_list=kern_list, likelihood_list=lik_list,
-                                                  inference_method=GPy.inference.latent_function_inference.EP(max_iters=self.max_ep_iters))
+            if self.normalize:
+                y_mean = self.virtY[0].mean(axis=0)
+                y_std = self.virtY[0].std(axis=0)
+                if np.any(y_std == 0):
+                    logger.debug('Y has some zero sd {}'.format(y_std))
+                    y_std[np.where(y_std==0)] = 1
+                self.standardized_virtY = self.virtY.copy()
+                self.standardized_virtY[0] = (self.virtY[0] - y_mean) / y_std
+                self._gp = GPy.models.MultioutputGP(X_list = self.virtX, Y_list = self.standardized_virtY,
+                                                    kernel_list=kern_list, likelihood_list=lik_list,
+                                                    inference_method=GPy.inference.latent_function_inference.EP(max_iters=self.max_ep_iters))
+            else:
+                self._gp = GPy.models.MultioutputGP(X_list = self.virtX, Y_list = self.virtY,
+                                                    kernel_list=kern_list, likelihood_list=lik_list,
+                                                    inference_method=GPy.inference.latent_function_inference.EP(max_iters=self.max_ep_iters))
             end = time.time()
             logger.debug("Creating GP took: {}".format(str(end-start)))
             start = time.time()
@@ -361,8 +389,13 @@ class GPyRegression:
         return kernel
 
     def _make_gpy_instance(self, x, y, kernel, noise_var, mean_function):
-        return GPy.models.GPRegression(
-            X=x, Y=y, kernel=kernel, noise_var=noise_var, mean_function=mean_function)
+        if self.normalize:
+            return GPy.models.GPRegression(
+                X=x, Y=y, kernel=kernel, noise_var=noise_var, mean_function=mean_function,
+                normalizer=True)
+        else:
+            return GPy.models.GPRegression(
+                X=x, Y=y, kernel=kernel, noise_var=noise_var, mean_function=mean_function)
 
     def get_model_likelihood(self, noise = 0.0):
         '''
@@ -403,10 +436,21 @@ class GPyRegression:
                 probit = GPy.likelihoods.Binomial(gp_link = GPy.likelihoods.link_functions.ScaledProbit(nu=1000))
                 lik_list += [probit for i in range(self.input_dim)]
                 start = time.time()
-                # need to be able to add in or remove virtual observations
-                self._gp = GPy.models.MultioutputGP(X_list = self.virtX, Y_list = self.virtY,
-                                                    kernel_list=kern_list, likelihood_list=lik_list,
-                                                    inference_method=GPy.inference.latent_function_inference.EP(max_iters=self.max_ep_iters))
+                if self.normalize:
+                    y_mean = self.virtY[0].mean(axis=0)
+                    y_std = self.virtY[0].std(axis=0)
+                    if np.any(y_std == 0):
+                        logger.debug('Y has some zero sd {}'.format(y_std))
+                        y_std[np.where(y_std==0)] = 1
+                    self.standardized_virtY = self.virtY.copy()
+                    self.standardized_virtY[0] = (self.virtY[0] - y_mean) / y_std
+                    self._gp = GPy.models.MultioutputGP(X_list = self.virtX, Y_list = self.standardized_virtY,
+                                                        kernel_list=kern_list, likelihood_list=lik_list,
+                                                        inference_method=GPy.inference.latent_function_inference.EP(max_iters=self.max_ep_iters))
+                else:
+                    self._gp = GPy.models.MultioutputGP(X_list = self.virtX, Y_list = self.virtY,
+                                                        kernel_list=kern_list, likelihood_list=lik_list,
+                                                        inference_method=GPy.inference.latent_function_inference.EP(max_iters=self.max_ep_iters))
                 end = time.time()
                 logger.debug("Creating GP took: {}".format(str(end-start)))
                 start = time.time()
@@ -422,8 +466,13 @@ class GPyRegression:
                 kernel = self._gp.kern.copy() if self._gp.kern else None
                 noise_var = self._gp.Gaussian_noise.variance[0]
                 mean_function = self._gp.mean_function.copy() if self._gp.mean_function else None
-                self._gp = self._make_gpy_instance(
-                    x, y, kernel=kernel, noise_var=noise_var, mean_function=mean_function)
+                if self.normalize:
+                    self._gp = self._make_gpy_instance(
+                        x, y, kernel=kernel, noise_var=noise_var, mean_function=mean_function,
+                        normalizer=True)
+                else:
+                    self._gp = self._make_gpy_instance(
+                        x, y, kernel=kernel, noise_var=noise_var, mean_function=mean_function)
                 self.optimize()
 
     def update_virt(self):
@@ -439,9 +488,21 @@ class GPyRegression:
             probit = GPy.likelihoods.Binomial(gp_link = GPy.likelihoods.link_functions.ScaledProbit(nu=1000))
             lik_list += [probit for i in range(self.input_dim)]
             start = time.time()
-            self._gp = GPy.models.MultioutputGP(X_list = self.virtX, Y_list = self.virtY,
-                                                  kernel_list=kern_list, likelihood_list=lik_list,
-                                                  inference_method=GPy.inference.latent_function_inference.EP(max_iters=self.max_ep_iters))
+            if self.normalize:
+                y_mean = self.virtY[0].mean(axis=0)
+                y_std = self.virtY[0].std(axis=0)
+                if np.any(y_std == 0):
+                    logger.debug('Y has some zero sd {}'.format(y_std))
+                    y_std[np.where(y_std==0)] = 1
+                self.standardized_virtY = self.virtY.copy()
+                self.standardized_virtY[0] = (self.virtY[0] - y_mean) / y_std
+                self._gp = GPy.models.MultioutputGP(X_list = self.virtX, Y_list = self.standardized_virtY,
+                                                    kernel_list=kern_list, likelihood_list=lik_list,
+                                                    inference_method=GPy.inference.latent_function_inference.EP(max_iters=self.max_ep_iters))
+            else:
+                self._gp = GPy.models.MultioutputGP(X_list = self.virtX, Y_list = self.virtY,
+                                                    kernel_list=kern_list, likelihood_list=lik_list,
+                                                    inference_method=GPy.inference.latent_function_inference.EP(max_iters=self.max_ep_iters))
             end = time.time()
             logger.debug("Creating GP took: {}".format(str(end-start)))
             start = time.time()
@@ -451,7 +512,7 @@ class GPyRegression:
     
     def extract_simple_model(self):
         kern = self.kernel.copy()
-        self._gp = GPy.models.GPRegression(X=self.virtX[0], Y=self.virtY[0], kernel=kern)
+        self._gp = GPy.models.GPRegression(X=self.virtX[0], Y=self.virtY[0], kernel=kern, normalizer=True)
         self.optimize()
         self.virtual_deriv = False
                         
@@ -462,6 +523,13 @@ class GPyRegression:
             self._gp.optimize(self.optimizer, max_iters=self.max_opt_iters)
         except np.linalg.linalg.LinAlgError:
             logger.warning("Numerical error in GP optimization. Stopping optimization")
+
+    def mean_std(self):
+        if not self.normalize or not self.virtual_deriv:
+            # what does standard gp with normalizer return?
+            logger.warning('mean_std only makes sense to use if Y is being standardized and virtual observations are being used')
+            return None, None
+        return self.virtY[0].mean(axis=0), self.virtY[0].std(axis=0)
 
     @property
     def n_evidence(self):
