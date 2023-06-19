@@ -126,7 +126,7 @@ class GPyRegression:
             # init gp
             kern = self.kernel.copy()
             kern_list = [kern] + [GPy.kern.DiffKern(kern,i) for i in range(self.input_dim)]
-            lik_list = [self.get_model_likelihood()]
+            lik_list = [GPy.likelihoods.Gaussian()]
             probit = GPy.likelihoods.Binomial(gp_link = GPy.likelihoods.link_functions.ScaledProbit(nu=1000))
             lik_list += [probit for i in range(self.input_dim)]
             if self.normalize:
@@ -332,7 +332,7 @@ class GPyRegression:
             self.virtY = [y] + [np.empty((0,1))]*self.input_dim
             kern = self.kernel.copy()
             kern_list = [kern] + [GPy.kern.DiffKern(kern,i) for i in range(self.input_dim)]
-            lik_list = [self.get_model_likelihood()]
+            lik_list = [GPy.likelihoods.Gaussian()]
             probit = GPy.likelihoods.Binomial(gp_link = GPy.likelihoods.link_functions.ScaledProbit(nu=1000))
             lik_list += [probit for i in range(self.input_dim)]
             start = time.time()
@@ -397,16 +397,16 @@ class GPyRegression:
             return GPy.models.GPRegression(
                 X=x, Y=y, kernel=kernel, noise_var=noise_var, mean_function=mean_function)
 
-    def get_model_likelihood(self, noise = 0.0):
-        '''
-        Returns gaussian likelihood with fixed noise.
-        '''
-        lik = GPy.likelihoods.Gaussian(variance=noise)
-        if noise < 0.00001:
-            lik.variance.constrain_fixed(value=1e-6,warning=True,trigger_parent=True)
-        else:
-            lik.variance.constrain_fixed(value=noise,warning=True,trigger_parent=True)
-        return lik
+    # def get_model_likelihood(self, noise = 0.0):
+    #     '''
+    #     Returns gaussian likelihood with fixed noise.
+    #     '''
+    #     lik = GPy.likelihoods.Gaussian(variance=noise)
+    #     if noise < 0.00001:
+    #         lik.variance.constrain_fixed(value=1e-6,warning=True,trigger_parent=True)
+    #     else:
+    #         lik.variance.constrain_fixed(value=noise,warning=True,trigger_parent=True)
+    #     return lik
 
     def update(self, x, y, update_gp=False):
         """Update the GP model with new data.
@@ -432,7 +432,7 @@ class GPyRegression:
                 # not certain about the model and variance here compared to the bolfi code
                 kern = self.kernel.copy()
                 kern_list = [kern] + [GPy.kern.DiffKern(kern,i) for i in range(self.input_dim)]
-                lik_list = [self.get_model_likelihood()]
+                lik_list = [GPy.likelihoods.Gaussian()]
                 probit = GPy.likelihoods.Binomial(gp_link = GPy.likelihoods.link_functions.ScaledProbit(nu=1000))
                 lik_list += [probit for i in range(self.input_dim)]
                 start = time.time()
@@ -484,7 +484,7 @@ class GPyRegression:
         else:
             kern = self.kernel.copy()
             kern_list = [kern] + [GPy.kern.DiffKern(kern,i) for i in range(self.input_dim)]
-            lik_list = [self.get_model_likelihood()]
+            lik_list = [GPy.likelihoods.Gaussian()]
             probit = GPy.likelihoods.Binomial(gp_link = GPy.likelihoods.link_functions.ScaledProbit(nu=1000))
             lik_list += [probit for i in range(self.input_dim)]
             start = time.time()
