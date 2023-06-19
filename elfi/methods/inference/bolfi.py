@@ -312,7 +312,7 @@ class BayesianOptimization(ParameterInference):
             # iterating through the acquisition points is necessary until we don't get boundary points or some
             # number of virtual points is added (10 is used in the code I'm adapting)
             if self.virtual_deriv:
-                for num_virt_points in range(10): # try adding up to 10 virtual points
+                for num_virt_points in range(11): # try adding up to 10 virtual points, will stop during adding of 11th
                     logger.debug('Attempting acquisition')
                     acquisition = self.acquisition_method.acquire(self.acq_batch_size, t=t)
                     need_virt_point = False
@@ -322,7 +322,7 @@ class BayesianOptimization(ParameterInference):
                         virtual_dist, dim, obs = self._give_distance_to_virtual_observation(acq_point_arr)
                         min_dist = self.min_point_dist * (self.target_model.bounds[border][1] - self.target_model.bounds[border][0])
                         if dim is not None:
-                            virtual_min_dist = self.min_point_dist*10 * (self.target_model.bounds[dim][1] - self.target_model.bounds[dim][0])
+                            virtual_min_dist = self.min_point_dist * (self.target_model.bounds[dim][1] - self.target_model.bounds[dim][0])
                         else:
                             virtual_min_dist = None
                         data_support=True
@@ -339,13 +339,13 @@ class BayesianOptimization(ParameterInference):
                         if ((virtual_min_dist is None) or (virtual_dist > virtual_min_dist)) and (dist < min_dist) and  data_support:
                             need_virt_point = True
                             break
-                    if not need_virt_point:
+                    if not need_virt_point or num_virt_points >= 10:
                         logger.debug('Acquisition is good')
                         for acq_point in acquisition:
                             acq_point_arr = np.array([acq_point])
                             virtual_dist, dim, obs = self._give_distance_to_virtual_observation(acq_point_arr)
                             if dim is not None:
-                                virtual_min_dist = self.min_point_dist*10 * (self.target_model.bounds[dim][1] - self.target_model.bounds[dim][0])
+                                virtual_min_dist = self.min_point_dist * (self.target_model.bounds[dim][1] - self.target_model.bounds[dim][0])
                             else:
                                 virtual_min_dist = None
                             if (virtual_min_dist is not None) and (virtual_dist < virtual_min_dist) and (self.adaptive==True):
