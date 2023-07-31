@@ -466,13 +466,8 @@ class GPyRegression:
                 kernel = self._gp.kern.copy() if self._gp.kern else None
                 noise_var = self._gp.Gaussian_noise.variance[0]
                 mean_function = self._gp.mean_function.copy() if self._gp.mean_function else None
-                if self.normalize:
-                    self._gp = self._make_gpy_instance(
-                        x, y, kernel=kernel, noise_var=noise_var, mean_function=mean_function,
-                        normalizer=True)
-                else:
-                    self._gp = self._make_gpy_instance(
-                        x, y, kernel=kernel, noise_var=noise_var, mean_function=mean_function)
+                self._gp = self._make_gpy_instance(
+                    x, y, kernel=kernel, noise_var=noise_var, mean_function=mean_function)
                 self.optimize()
 
     def update_virt(self):
