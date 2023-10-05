@@ -228,11 +228,8 @@ class BayesianOptimization(ParameterInference):
         # only update GP when current acquisition is done (in case of parallel batches)
         # logger.debug('pending acquisitions left: {}'.format(self.batches.has_pending))
         # this is how many batches haven't been submitted so it won't do what I want
-        if not self.batches.has_pending:
-            self.target_model.update(params, batch[self.target_name], True)
-            self.state['last_GP_update'] = self.target_model.n_evidence
-        else:
-            self.target_model.update(params, batch[self.target_name], False)
+        self.target_model.update(params, batch[self.target_name], True)
+        self.state['last_GP_update'] = self.target_model.n_evidence
 
     def _give_border(self, x):
         '''
