@@ -209,9 +209,13 @@ class GPyRegression:
             # logger.debug('model predict output: {}'.format(self._gp.predict(x)))
             mu, var = self._gp.predict(x)
         if self.normalize and reverse_normalize:
-            # normal GP handles reverse already
-            y_mean = self.virtY[0].mean(axis=0)
-            y_std = self.virtY[0].std(axis=0)
+            if self.virtual_deriv:
+                # normal GP handles reverse already
+                y_mean = self.virtY[0].mean(axis=0)
+                y_std = self.virtY[0].std(axis=0)
+            else:
+                y_mean = self.virtY.mean(axis=0)
+                y_std = self.virtY.std(axis=0)
             mu = mu*y_std + y_mean
             var = var*(y_std**2)
         return mu, var
@@ -365,15 +369,15 @@ class GPyRegression:
             noise_var = self.gp_params.get('noise_var') or np.max(y)**2. / 100.
             mean_function = self.gp_params.get('mean_function')
             if self.normalize:
-                    y_mean = self.virtY[0].mean(axis=0)
-                    y_std = self.virtY[0].std(axis=0)
-                    if np.any(y_std == 0):
-                        logger.debug('Y has some zero sd {}'.format(y_std))
-                        y_std[np.where(y_std==0)] = 1
-                    self.standardized_virtY = self.virtY.copy()
-                    self.standardized_virtY[0] = (self.virtY[0] - y_mean) / y_std
-                    self._gp = self._make_gpy_instance(
-                        self.virtX, self.standardized_virtY, kernel=kern, noise_var=noise_var, mean_function=mean_function)
+                y_mean = self.virtY.mean(axis=0)
+                y_std = self.virtY.std(axis=0)
+                if np.any(y_std == 0):
+                    logger.debug('Y has some zero sd {}'.format(y_std))
+                    y_std[np.where(y_std==0)] = 1
+                self.standardized_virtY = self.virtY.copy()
+                self.standardized_virtY = (self.virtY - y_mean) / y_std
+                self._gp = self._make_gpy_instance(
+                    self.virtX, self.standardized_virtY, kernel=kern, noise_var=noise_var, mean_function=mean_function)
             else:
                 self._gp = self._make_gpy_instance(
                     self.virtX, self.virtY, kernel=kern, noise_var=noise_var, mean_function=mean_function)
@@ -472,21 +476,21 @@ class GPyRegression:
                 logger.debug("Optimizing GP took: {}".format(str(end-start)))
         else:
             # Reconstruct with new data
-            self.virtX[0] = np.r_[self.virtX[0], x]
-            self.virtY[0] = np.r_[self.virtY[0], y]
+            self.virtX = np.r_[self.virtX, x]
+            self.virtY = np.r_[self.virtY, y]
             if update_gp:
                 # It seems that GPy will do some optimization unless you make copies of everything
                 kernel = self._gp.kern.copy() if self._gp.kern else None
                 noise_var = self._gp.Gaussian_noise.variance[0]
                 mean_function = self._gp.mean_function.copy() if self._gp.mean_function else None
                 if self.normalize:
-                        y_mean = self.virtY[0].mean(axis=0)
-                        y_std = self.virtY[0].std(axis=0)
+                        y_mean = self.virtY.mean(axis=0)
+                        y_std = self.virtY.std(axis=0)
                         if np.any(y_std == 0):
                             logger.debug('Y has some zero sd {}'.format(y_std))
                             y_std[np.where(y_std==0)] = 1
                         self.standardized_virtY = self.virtY.copy()
-                        self.standardized_virtY[0] = (self.virtY[0] - y_mean) / y_std
+                        self.standardized_virtY = (self.virtY - y_mean) / y_std
                         self._gp = self._make_gpy_instance(
                             self.virtX, self.standardized_virtY, kernel=kernel, noise_var=noise_var, mean_function=mean_function)
                 else:
