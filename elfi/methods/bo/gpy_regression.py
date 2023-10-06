@@ -208,7 +208,7 @@ class GPyRegression:
         else:
             # logger.debug('model predict output: {}'.format(self._gp.predict(x)))
             mu, var = self._gp.predict(x)
-        if self.normalize and reverse_normalize and self.virtual_deriv:
+        if self.normalize and reverse_normalize:
             # normal GP handles reverse already
             y_mean = self.virtY[0].mean(axis=0)
             y_std = self.virtY[0].std(axis=0)
@@ -359,11 +359,24 @@ class GPyRegression:
             end = time.time()
             logger.debug("Optimizing GP took: {}".format(str(end-start)))
         else:
+            self.virtX = [x]
+            self.virtY = [y]
+            kern = self.kernel.copy()
             noise_var = self.gp_params.get('noise_var') or np.max(y)**2. / 100.
             mean_function = self.gp_params.get('mean_function')
-            # create copy of object so that object can be pickled
-            self._gp = self._make_gpy_instance(
-                x, y, kernel=kernel.copy(), noise_var=noise_var, mean_function=mean_function)
+            if self.normalize:
+                    y_mean = self.virtY[0].mean(axis=0)
+                    y_std = self.virtY[0].std(axis=0)
+                    if np.any(y_std == 0):
+                        logger.debug('Y has some zero sd {}'.format(y_std))
+                        y_std[np.where(y_std==0)] = 1
+                    self.standardized_virtY = self.virtY.copy()
+                    self.standardized_virtY[0] = (self.virtY[0] - y_mean) / y_std
+                    self._gp = self._make_gpy_instance(
+                        self.virtX, self.standardized_virtY, kernel=kern, noise_var=noise_var, mean_function=mean_function)
+            else:
+                self._gp = self._make_gpy_instance(
+                    self.virtX, self.virtY, kernel=kern, noise_var=noise_var, mean_function=mean_function)
             self.optimize()
 
     def _default_kernel(self, x, y):
@@ -389,13 +402,13 @@ class GPyRegression:
         return kernel
 
     def _make_gpy_instance(self, x, y, kernel, noise_var, mean_function):
-        if self.normalize:
-            return GPy.models.GPRegression(
-                X=x, Y=y, kernel=kernel, noise_var=noise_var, mean_function=mean_function,
-                normalizer=True)
-        else:
-            return GPy.models.GPRegression(
-                X=x, Y=y, kernel=kernel, noise_var=noise_var, mean_function=mean_function)
+        # if self.normalize:
+        #     return GPy.models.GPRegression(
+        #         X=x, Y=y, kernel=kernel, noise_var=noise_var, mean_function=mean_function,
+        #         normalizer=True)
+        # else:
+        return GPy.models.GPRegression(
+            X=x, Y=y, kernel=kernel, noise_var=noise_var, mean_function=mean_function)
 
     # def get_model_likelihood(self, noise = 0.0):
     #     '''
@@ -459,15 +472,26 @@ class GPyRegression:
                 logger.debug("Optimizing GP took: {}".format(str(end-start)))
         else:
             # Reconstruct with new data
-            x = np.r_[self._gp.X, x]
-            y = np.r_[self._gp.Y, y]
+            self.virtX[0] = np.r_[self.virtX[0], x]
+            self.virtY[0] = np.r_[self.virtY[0], y]
             if update_gp:
                 # It seems that GPy will do some optimization unless you make copies of everything
                 kernel = self._gp.kern.copy() if self._gp.kern else None
                 noise_var = self._gp.Gaussian_noise.variance[0]
                 mean_function = self._gp.mean_function.copy() if self._gp.mean_function else None
-                self._gp = self._make_gpy_instance(
-                    x, y, kernel=kernel, noise_var=noise_var, mean_function=mean_function)
+                if self.normalize:
+                        y_mean = self.virtY[0].mean(axis=0)
+                        y_std = self.virtY[0].std(axis=0)
+                        if np.any(y_std == 0):
+                            logger.debug('Y has some zero sd {}'.format(y_std))
+                            y_std[np.where(y_std==0)] = 1
+                        self.standardized_virtY = self.virtY.copy()
+                        self.standardized_virtY[0] = (self.virtY[0] - y_mean) / y_std
+                        self._gp = self._make_gpy_instance(
+                            self.virtX, self.standardized_virtY, kernel=kernel, noise_var=noise_var, mean_function=mean_function)
+                else:
+                    self._gp = self._make_gpy_instance(
+                            self.virtX, self.virtY, kernel=kernel, noise_var=noise_var, mean_function=mean_function)
                 self.optimize()
 
     def update_virt(self):
@@ -520,9 +544,9 @@ class GPyRegression:
             logger.warning("Numerical error in GP optimization. Stopping optimization")
 
     def mean_std(self):
-        if not self.normalize or not self.virtual_deriv:
+        if not self.normalize:
             # what does standard gp with normalizer return?
-            logger.warning('mean_std only makes sense to use if Y is being standardized and virtual observations are being used')
+            logger.warning('mean_std only makes sense to use if Y is being standardized')
             return None, None
         return self.virtY[0].mean(axis=0), self.virtY[0].std(axis=0)
 
