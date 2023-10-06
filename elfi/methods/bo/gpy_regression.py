@@ -363,8 +363,8 @@ class GPyRegression:
             end = time.time()
             logger.debug("Optimizing GP took: {}".format(str(end-start)))
         else:
-            self.virtX = [x]
-            self.virtY = [y]
+            self.virtX = x
+            self.virtY = y
             kern = self.kernel.copy()
             noise_var = self.gp_params.get('noise_var') or np.max(y)**2. / 100.
             mean_function = self.gp_params.get('mean_function')
