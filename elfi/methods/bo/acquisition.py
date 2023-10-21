@@ -223,7 +223,7 @@ class LCBSC(AcquisitionBase):
 
     """
 
-    def __init__(self, *args, delta=None, additive_cost=None, **kwargs):
+    def __init__(self, *args, delta=None, additive_cost=None, multiplier=1, **kwargs):
         """Initialize LCBSC.
 
         Parameters
@@ -243,6 +243,7 @@ class LCBSC(AcquisitionBase):
         super(LCBSC, self).__init__(*args, **kwargs)
         self.name = 'lcbsc'
         self.label_fn = 'Confidence Bound'
+        self.multiplier = multiplier
 
         if additive_cost is not None and not isinstance(additive_cost, CostFunction):
             raise TypeError("Additive cost must be type CostFunction.")
@@ -257,7 +258,7 @@ class LCBSC(AcquisitionBase):
         # Start from 0
         t += 1
         d = self.model.input_dim
-        return 2 * np.log(t**(d / 2 + 2) * np.pi**2 / (3 * self.delta))
+        return 2 * np.log(t**(d / 2 + 2) * np.pi**2 / (3 * self.delta)) * self.multiplier
 
     def evaluate(self, x, t=None):
         """Evaluate the Lower confidence bound selection criterion.
