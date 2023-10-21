@@ -552,7 +552,10 @@ class GPyRegression:
             # what does standard gp with normalizer return?
             logger.warning('mean_std only makes sense to use if Y is being standardized')
             return None, None
-        return self.virtY[0].mean(axis=0), self.virtY[0].std(axis=0)
+        if self.virtual_deriv:
+            return self.virtY[0].mean(axis=0), self.virtY[0].std(axis=0)
+        else:
+            return self.virtY.mean(axis=0), self.virtY.std(axis=0)
 
     @property
     def n_evidence(self):
