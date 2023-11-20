@@ -368,6 +368,7 @@ class GPyRegression:
             kern = self.kernel.copy()
             noise_var = self.gp_params.get('noise_var') or np.max(y)**2. / 100.
             mean_function = self.gp_params.get('mean_function')
+            noise_prior = self.gp_params.get('noise_prior')
             if self.normalize:
                 y_mean = self.virtY.mean(axis=0)
                 y_std = self.virtY.std(axis=0)
@@ -381,6 +382,8 @@ class GPyRegression:
             else:
                 self._gp = self._make_gpy_instance(
                     self.virtX, self.virtY, kernel=kern, noise_var=noise_var, mean_function=mean_function)
+            if noise_prior is not None:
+                self._gp.Gaussian_noise.set_prior(noise_prior)
             self.optimize()
 
     def _default_kernel(self, x, y):
