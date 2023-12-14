@@ -32,6 +32,10 @@ def logpdf_link(self, inv_link_f, y, Y_metadata=None):
     return nchoosey + t1 + t2
 GPy.likelihoods.Binomial.logpdf_link = logpdf_link #This is the dirty part
 
+def mad(arr):
+    med = np.median(arr)
+    return np.median(np.abs(arr - med))
+
 class GPyRegression:
     """Gaussian Process regression using the GPy library.
 
@@ -45,7 +49,7 @@ class GPyRegression:
                  max_opt_iters=50,
                  gp=None,
                  normalize=False,
-                 center=False,
+                 mad=False,
                  **gp_params):
         """Initialize GPyRegression.
 
@@ -113,7 +117,7 @@ class GPyRegression:
         self.virtY = []
         self.standardized_virtY = []
         self.normalize = normalize
-        self.center = center
+        self.mad = mad
         self.max_ep_iters = 1e4
 
     def __getstate__(self):
@@ -133,16 +137,15 @@ class GPyRegression:
             lik_list += [probit for i in range(self.input_dim)]
             if self.normalize:
                 y_mean = self.virtY[0].mean(axis=0)
-                if not self.center:
+                if not self.mad:
                     y_std = self.virtY[0].std(axis=0)
-                    if np.any(y_std == 0):
-                        logger.debug('Y has some zero sd {}'.format(y_std))
-                        y_std[np.where(y_std==0)] = 1
-                self.standardized_virtY = self.virtY.copy()
-                if self.center:
-                    self.standardized_virtY[0] = (self.virtY[0] - y_mean)
                 else:
-                    self.standardized_virtY[0] = (self.virtY[0] - y_mean) / y_std 
+                    y_std = mad(self.virtY[0])
+                if np.any(y_std == 0):
+                    logger.debug('Y has some zero sd {}'.format(y_std))
+                    y_std[np.where(y_std==0)] = 1
+                self.standardized_virtY = self.virtY.copy()
+                self.standardized_virtY[0] = (self.virtY[0] - y_mean) / y_std 
                 self._gp = GPy.models.MultioutputGP(X_list = self.virtX, Y_list = self.standardized_virtY,
                                                     kernel_list=kern_list, likelihood_list=lik_list,
                                                     inference_method=GPy.inference.latent_function_inference.EP(max_iters=self.max_ep_iters))
@@ -218,15 +221,18 @@ class GPyRegression:
             if self.virtual_deriv:
                 # normal GP handles reverse already
                 y_mean = self.virtY[0].mean(axis=0)
-                y_std = self.virtY[0].std(axis=0)
+                if self.mad:
+                    y_std = mad(self.virtY[0])
+                else:
+                    y_std = self.virtY[0].std(axis=0)
             else:
                 y_mean = self.virtY.mean(axis=0)
-                y_std = self.virtY.std(axis=0)
-            if self.center:
-                mu = mu + y_mean
-            else:
-                mu = mu*y_std + y_mean
-                var = var*(y_std**2)
+                if self.mad:
+                    y_std = mad(self.virtY)
+                else:
+                    y_std = self.virtY.std(axis=0)
+            mu = mu*y_std + y_mean
+            var = var*(y_std**2)
         return mu, var
 
     # TODO: find a more general solution
@@ -352,16 +358,15 @@ class GPyRegression:
             # need to be able to add in or remove virtual observations
             if self.normalize:
                 y_mean = self.virtY[0].mean(axis=0)
-                if not self.center:
+                if not self.mad:
                     y_std = self.virtY[0].std(axis=0)
-                    if np.any(y_std == 0):
-                        logger.debug('Y has some zero sd {}'.format(y_std))
-                        y_std[np.where(y_std==0)] = 1
-                self.standardized_virtY = self.virtY.copy()
-                if self.center:
-                    self.standardized_virtY[0] = (self.virtY[0] - y_mean)
                 else:
-                    self.standardized_virtY[0] = (self.virtY[0] - y_mean) / y_std
+                    y_std = mad(self.virtY[0])
+                if np.any(y_std == 0):
+                    logger.debug('Y has some zero sd {}'.format(y_std))
+                    y_std[np.where(y_std==0)] = 1
+                self.standardized_virtY = self.virtY.copy()
+                self.standardized_virtY[0] = (self.virtY[0] - y_mean) / y_std
                 self._gp = GPy.models.MultioutputGP(X_list = self.virtX, Y_list = self.standardized_virtY,
                                                     kernel_list=kern_list, likelihood_list=lik_list,
                                                     inference_method=GPy.inference.latent_function_inference.EP(max_iters=self.max_ep_iters))
@@ -384,16 +389,15 @@ class GPyRegression:
             noise_prior = self.gp_params.get('noise_prior')
             if self.normalize:
                 y_mean = self.virtY.mean(axis=0)
-                if not self.center:
+                if not self.mad:
                     y_std = self.virtY.std(axis=0)
-                    if np.any(y_std == 0):
-                        logger.debug('Y has some zero sd {}'.format(y_std))
-                        y_std[np.where(y_std==0)] = 1
-                self.standardized_virtY = self.virtY.copy()
-                if self.center:
-                    self.standardized_virtY = (self.virtY - y_mean)
                 else:
-                    self.standardized_virtY = (self.virtY - y_mean) / y_std
+                    y_std = mad(self.virtY)
+                if np.any(y_std == 0):
+                    logger.debug('Y has some zero sd {}'.format(y_std))
+                    y_std[np.where(y_std==0)] = 1
+                self.standardized_virtY = self.virtY.copy()
+                self.standardized_virtY = (self.virtY - y_mean) / y_std
                 self._gp = self._make_gpy_instance(
                     self.virtX, self.standardized_virtY, kernel=kern, noise_var=noise_var, mean_function=mean_function)
             else:
@@ -475,16 +479,15 @@ class GPyRegression:
                 start = time.time()
                 if self.normalize:
                     y_mean = self.virtY[0].mean(axis=0)
-                    if not self.center:
+                    if not self.mad:
                         y_std = self.virtY[0].std(axis=0)
-                        if np.any(y_std == 0):
-                            logger.debug('Y has some zero sd {}'.format(y_std))
-                            y_std[np.where(y_std==0)] = 1
-                    self.standardized_virtY = self.virtY.copy()
-                    if self.center:
-                        self.standardized_virtY[0] = (self.virtY[0] - y_mean)
                     else:
-                        self.standardized_virtY[0] = (self.virtY[0] - y_mean) / y_std
+                        y_std = mad(self.virtY[0])
+                    if np.any(y_std == 0):
+                        logger.debug('Y has some zero sd {}'.format(y_std))
+                        y_std[np.where(y_std==0)] = 1
+                    self.standardized_virtY = self.virtY.copy()
+                    self.standardized_virtY[0] = (self.virtY[0] - y_mean) / y_std
                     self._gp = GPy.models.MultioutputGP(X_list = self.virtX, Y_list = self.standardized_virtY,
                                                         kernel_list=kern_list, likelihood_list=lik_list,
                                                         inference_method=GPy.inference.latent_function_inference.EP(max_iters=self.max_ep_iters))
@@ -510,16 +513,15 @@ class GPyRegression:
                 noise_prior = self.gp_params.get('noise_prior')
                 if self.normalize:
                     y_mean = self.virtY.mean(axis=0)
-                    if not self.center:
+                    if not self.mad:
                         y_std = self.virtY.std(axis=0)
-                        if np.any(y_std == 0):
-                            logger.debug('Y has some zero sd {}'.format(y_std))
-                            y_std[np.where(y_std==0)] = 1
-                    self.standardized_virtY = self.virtY.copy()
-                    if self.center:
-                        self.standardized_virtY = (self.virtY - y_mean)
                     else:
-                        self.standardized_virtY = (self.virtY - y_mean) / y_std
+                        y_std = mad(self.virtY)
+                    if np.any(y_std == 0):
+                        logger.debug('Y has some zero sd {}'.format(y_std))
+                        y_std[np.where(y_std==0)] = 1
+                    self.standardized_virtY = self.virtY.copy()
+                    self.standardized_virtY = (self.virtY - y_mean) / y_std
                     self._gp = self._make_gpy_instance(
                         self.virtX, self.standardized_virtY, kernel=kernel, noise_var=noise_var, mean_function=mean_function)
                 else:
@@ -544,16 +546,15 @@ class GPyRegression:
             start = time.time()
             if self.normalize:
                 y_mean = self.virtY[0].mean(axis=0)
-                if not self.center:
+                if not self.mad:
                     y_std = self.virtY[0].std(axis=0)
-                    if np.any(y_std == 0):
-                        logger.debug('Y has some zero sd {}'.format(y_std))
-                        y_std[np.where(y_std==0)] = 1
-                self.standardized_virtY = self.virtY.copy()
-                if self.center:
-                    self.standardized_virtY[0] = (self.virtY[0] - y_mean)
                 else:
-                    self.standardized_virtY[0] = (self.virtY[0] - y_mean) / y_std
+                    y_std = mad(self.virtY[0])
+                if np.any(y_std == 0):
+                    logger.debug('Y has some zero sd {}'.format(y_std))
+                    y_std[np.where(y_std==0)] = 1
+                self.standardized_virtY = self.virtY.copy()
+                self.standardized_virtY[0] = (self.virtY[0] - y_mean) / y_std
                 self._gp = GPy.models.MultioutputGP(X_list = self.virtX, Y_list = self.standardized_virtY,
                                                     kernel_list=kern_list, likelihood_list=lik_list,
                                                     inference_method=GPy.inference.latent_function_inference.EP(max_iters=self.max_ep_iters))
