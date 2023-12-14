@@ -32,9 +32,9 @@ def logpdf_link(self, inv_link_f, y, Y_metadata=None):
     return nchoosey + t1 + t2
 GPy.likelihoods.Binomial.logpdf_link = logpdf_link #This is the dirty part
 
-def mad(arr):
-    med = np.median(arr)
-    return np.median(np.abs(arr - med))
+def mad(arr, axis=0):
+    med = np.median(arr, axis=axis)
+    return np.median(np.abs(arr - med), axis=axis)
 
 class GPyRegression:
     """Gaussian Process regression using the GPy library.
@@ -140,7 +140,7 @@ class GPyRegression:
                 if not self.mad:
                     y_std = self.virtY[0].std(axis=0)
                 else:
-                    y_std = mad(self.virtY[0])
+                    y_std = mad(self.virtY[0], axis=0)
                 if np.any(y_std == 0):
                     logger.debug('Y has some zero sd {}'.format(y_std))
                     y_std[np.where(y_std==0)] = 1
@@ -222,13 +222,13 @@ class GPyRegression:
                 # normal GP handles reverse already
                 y_mean = self.virtY[0].mean(axis=0)
                 if self.mad:
-                    y_std = mad(self.virtY[0])
+                    y_std = mad(self.virtY[0], axis=0)
                 else:
                     y_std = self.virtY[0].std(axis=0)
             else:
                 y_mean = self.virtY.mean(axis=0)
                 if self.mad:
-                    y_std = mad(self.virtY)
+                    y_std = mad(self.virtY, axis=0)
                 else:
                     y_std = self.virtY.std(axis=0)
             mu = mu*y_std + y_mean
@@ -361,7 +361,7 @@ class GPyRegression:
                 if not self.mad:
                     y_std = self.virtY[0].std(axis=0)
                 else:
-                    y_std = mad(self.virtY[0])
+                    y_std = mad(self.virtY[0], axis=0)
                 if np.any(y_std == 0):
                     logger.debug('Y has some zero sd {}'.format(y_std))
                     y_std[np.where(y_std==0)] = 1
@@ -392,7 +392,7 @@ class GPyRegression:
                 if not self.mad:
                     y_std = self.virtY.std(axis=0)
                 else:
-                    y_std = mad(self.virtY)
+                    y_std = mad(self.virtY, axis=0)
                 if np.any(y_std == 0):
                     logger.debug('Y has some zero sd {}'.format(y_std))
                     y_std[np.where(y_std==0)] = 1
@@ -482,7 +482,7 @@ class GPyRegression:
                     if not self.mad:
                         y_std = self.virtY[0].std(axis=0)
                     else:
-                        y_std = mad(self.virtY[0])
+                        y_std = mad(self.virtY[0], axis=0)
                     if np.any(y_std == 0):
                         logger.debug('Y has some zero sd {}'.format(y_std))
                         y_std[np.where(y_std==0)] = 1
@@ -516,7 +516,7 @@ class GPyRegression:
                     if not self.mad:
                         y_std = self.virtY.std(axis=0)
                     else:
-                        y_std = mad(self.virtY)
+                        y_std = mad(self.virtY, axis=0)
                     if np.any(y_std == 0):
                         logger.debug('Y has some zero sd {}'.format(y_std))
                         y_std[np.where(y_std==0)] = 1
@@ -549,7 +549,7 @@ class GPyRegression:
                 if not self.mad:
                     y_std = self.virtY[0].std(axis=0)
                 else:
-                    y_std = mad(self.virtY[0])
+                    y_std = mad(self.virtY[0], axis=0)
                 if np.any(y_std == 0):
                     logger.debug('Y has some zero sd {}'.format(y_std))
                     y_std[np.where(y_std==0)] = 1
