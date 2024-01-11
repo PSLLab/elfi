@@ -50,6 +50,7 @@ class GPyRegression:
                  gp=None,
                  normalize=False,
                  mad=False,
+                 mean_center=False,
                  **gp_params):
         """Initialize GPyRegression.
 
@@ -118,6 +119,7 @@ class GPyRegression:
         self.standardized_virtY = []
         self.normalize = normalize
         self.mad = mad
+        self.mean_center = mean_center
         self.max_ep_iters = 1e4
 
     def __getstate__(self):
@@ -139,6 +141,8 @@ class GPyRegression:
                 y_mean = self.virtY[0].mean(axis=0)
                 if not self.mad:
                     y_std = self.virtY[0].std(axis=0)
+                elif self.mean_center:
+                    y_std = 1
                 else:
                     y_std = mad(self.virtY[0], axis=0)
                 if np.any(y_std == 0):
@@ -223,12 +227,16 @@ class GPyRegression:
                 y_mean = self.virtY[0].mean(axis=0)
                 if self.mad:
                     y_std = mad(self.virtY[0], axis=0)
+                elif self.mean_center:
+                    y_std = 1
                 else:
                     y_std = self.virtY[0].std(axis=0)
             else:
                 y_mean = self.virtY.mean(axis=0)
                 if self.mad:
                     y_std = mad(self.virtY, axis=0)
+                elif self.mean_center:
+                    y_std = 1
                 else:
                     y_std = self.virtY.std(axis=0)
             mu = mu*y_std + y_mean
@@ -360,6 +368,8 @@ class GPyRegression:
                 y_mean = self.virtY[0].mean(axis=0)
                 if not self.mad:
                     y_std = self.virtY[0].std(axis=0)
+                elif self.mean_center:
+                    y_std = 1
                 else:
                     y_std = mad(self.virtY[0], axis=0)
                 if np.any(y_std == 0):
@@ -391,6 +401,8 @@ class GPyRegression:
                 y_mean = self.virtY.mean(axis=0)
                 if not self.mad:
                     y_std = self.virtY.std(axis=0)
+                elif self.mean_center:
+                    y_std = 1
                 else:
                     y_std = mad(self.virtY, axis=0)
                 if np.any(y_std == 0):
@@ -481,6 +493,8 @@ class GPyRegression:
                     y_mean = self.virtY[0].mean(axis=0)
                     if not self.mad:
                         y_std = self.virtY[0].std(axis=0)
+                    elif self.mean_center:
+                        y_std = 1
                     else:
                         y_std = mad(self.virtY[0], axis=0)
                     if np.any(y_std == 0):
@@ -515,6 +529,8 @@ class GPyRegression:
                     y_mean = self.virtY.mean(axis=0)
                     if not self.mad:
                         y_std = self.virtY.std(axis=0)
+                    elif self.mean_center:
+                        y_std = 1   
                     else:
                         y_std = mad(self.virtY, axis=0)
                     if np.any(y_std == 0):
@@ -548,6 +564,8 @@ class GPyRegression:
                 y_mean = self.virtY[0].mean(axis=0)
                 if not self.mad:
                     y_std = self.virtY[0].std(axis=0)
+                elif self.mean_center:
+                    y_std = 1
                 else:
                     y_std = mad(self.virtY[0], axis=0)
                 if np.any(y_std == 0):
