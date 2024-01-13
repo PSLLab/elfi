@@ -129,7 +129,7 @@ class GPyRegression:
         return state
     
     def __setstate__(self, state):
-        del self.__dict__['_gp']
+        # del state['_gp']
         self.__dict__.update(state)
         if self.virtual_deriv:
             # init gp
