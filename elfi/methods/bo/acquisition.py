@@ -686,6 +686,7 @@ class ExpIntVar(MaxVar):
     def __setstate__(self, state):
         del self.__dict__['_K']
         del self.__dict__['K']
+        print('here')
         self.__dict__.update(state)
         self._K = None
         self.K = None
