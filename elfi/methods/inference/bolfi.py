@@ -125,7 +125,7 @@ class BayesianOptimization(ParameterInference):
             self.target_model.virtual_deriv = True
 
     def __setstate__(self, state):
-        print('here')
+        del state['acquisition_method']
         self.__dict__.update(state)
 
     def _resolve_initial_evidence(self, initial_evidence):
