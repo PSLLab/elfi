@@ -124,11 +124,6 @@ class BayesianOptimization(ParameterInference):
         if self.virtual_deriv:
             self.target_model.virtual_deriv = True
 
-    def __setstate__(self, state):
-        del state['acquisition_method']
-        print(state)
-        # self.__dict__.update(state)
-
     def _resolve_initial_evidence(self, initial_evidence):
         # Some sensibility limit for starting GP regression
         precomputed = None
@@ -529,6 +524,15 @@ class BOLFI(BayesianOptimization):
     http://jmlr.org/papers/v17/15-017.html
 
     """
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        return state
+
+    def __setstate__(self, state):
+        del state['acquisition_method']
+        print(state)
+        # self.__dict__.update(state)
 
     def fit(self, n_evidence, threshold=None, bar=True):
         """Fit the surrogate model.
