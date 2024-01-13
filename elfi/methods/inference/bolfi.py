@@ -124,6 +124,10 @@ class BayesianOptimization(ParameterInference):
         if self.virtual_deriv:
             self.target_model.virtual_deriv = True
 
+    def __setstate__(self, state):
+        print('here')
+        self.__dict__.update(state)
+
     def _resolve_initial_evidence(self, initial_evidence):
         # Some sensibility limit for starting GP regression
         precomputed = None
