@@ -684,6 +684,8 @@ class ExpIntVar(MaxVar):
             self.points_int = np.mgrid[grid_param].reshape(len(self.model.bounds), -1).T
 
     def __setstate__(self, state):
+        del self.__dict__['_K']
+        del self.__dict__['K']
         self.__dict__.update(state)
         self._K = None
         self.K = None
