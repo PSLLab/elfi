@@ -126,6 +126,7 @@ class BayesianOptimization(ParameterInference):
 
     def __setstate__(self, state):
         del state['acquisition_method']
+        print(state)
         self.__dict__.update(state)
 
     def _resolve_initial_evidence(self, initial_evidence):
