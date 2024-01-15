@@ -380,8 +380,8 @@ class BayesianOptimization(ParameterInference):
     def _allow_submit(self, batch_index):
         # Allow submitting freely as long we are still submitting initial evidence
         t = self._get_acquisition_index(batch_index)
-        if t < 0:
-            return True
+        # if t < 0:
+        #     return True
         
         if not super(BayesianOptimization, self)._allow_submit(batch_index):
             return False
@@ -525,14 +525,14 @@ class BOLFI(BayesianOptimization):
 
     """
 
-    def __getstate__(self):
-        state = self.__dict__.copy()
-        return state
+    # def __getstate__(self):
+    #     state = self.__dict__.copy()
+    #     return state
 
-    def __setstate__(self, state):
-        del state['acquisition_method']
-        print(state)
-        # self.__dict__.update(state)
+    # def __setstate__(self, state):
+    #     del state['acquisition_method']
+    #     print(state)
+    #     # self.__dict__.update(state)
 
     def fit(self, n_evidence, threshold=None, bar=True):
         """Fit the surrogate model.
