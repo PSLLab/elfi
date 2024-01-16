@@ -686,8 +686,10 @@ class ExpIntVar(MaxVar):
 
     def __getstate__(self):
         state = self.__dict__.copy()
-        del state['K']
-        del state['_K']
+        if 'K' in self.__dict__:
+            del state['K']
+        if '_K' in self.__dict__:
+            del state['_K']
         return state
     
     def __setstate__(self, state):
