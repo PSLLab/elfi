@@ -683,13 +683,15 @@ class ExpIntVar(MaxVar):
             grid_param = [slice(b[0], b[1], d_grid) for b in self.model.bounds]
             self.points_int = np.mgrid[grid_param].reshape(len(self.model.bounds), -1).T
 
-    # def __setstate__(self, state):
-    #     del self.state['_K']
-    #     del self.state['K']
-    #     print('here')
-    #     self.__dict__.update(state)
-    #     self._K = None
-    #     self.K = None
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        del state['K']
+        del state['_K']
+        return state
+    
+    def __setstate__(self, state):
+        self.__dict__.update(state)
 
     def acquire(self, n, t):
         """Acquire a batch of acquisition points.
