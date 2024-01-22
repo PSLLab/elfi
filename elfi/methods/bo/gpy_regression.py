@@ -121,6 +121,8 @@ class GPyRegression:
         self.mad = mad
         self.mean_center = mean_center
         self.max_ep_iters = 1e4
+        if mad and mean_center:
+            raise Exception('mad and mean_center are mutually exclusive')
 
     def __getstate__(self):
         state = self.__dict__.copy()
@@ -139,12 +141,12 @@ class GPyRegression:
             lik_list += [probit for i in range(self.input_dim)]
             if self.normalize:
                 y_mean = self.virtY[0].mean(axis=0)
-                if not self.mad:
-                    y_std = self.virtY[0].std(axis=0)
+                if self.mad:
+                    y_std = mad(self.virtY[0], axis=0)
                 elif self.mean_center:
                     y_std = 1
                 else:
-                    y_std = mad(self.virtY[0], axis=0)
+                    y_std = self.virtY[0].std(axis=0)
                 if np.any(y_std == 0):
                     logger.debug('Y has some zero sd {}'.format(y_std))
                     y_std[np.where(y_std==0)] = 1
@@ -366,12 +368,12 @@ class GPyRegression:
             # need to be able to add in or remove virtual observations
             if self.normalize:
                 y_mean = self.virtY[0].mean(axis=0)
-                if not self.mad:
-                    y_std = self.virtY[0].std(axis=0)
+                if self.mad:
+                    y_std = mad(self.virtY[0], axis=0)
                 elif self.mean_center:
                     y_std = 1
                 else:
-                    y_std = mad(self.virtY[0], axis=0)
+                    y_std = self.virtY[0].std(axis=0)
                 if np.any(y_std == 0):
                     logger.debug('Y has some zero sd {}'.format(y_std))
                     y_std[np.where(y_std==0)] = 1
@@ -399,12 +401,12 @@ class GPyRegression:
             noise_prior = self.gp_params.get('noise_prior')
             if self.normalize:
                 y_mean = self.virtY.mean(axis=0)
-                if not self.mad:
-                    y_std = self.virtY.std(axis=0)
+                if self.mad:
+                    y_std = mad(self.virtY, axis=0)
                 elif self.mean_center:
                     y_std = 1
                 else:
-                    y_std = mad(self.virtY, axis=0)
+                    y_std = self.virtY.std(axis=0)
                 if np.any(y_std == 0):
                     logger.debug('Y has some zero sd {}'.format(y_std))
                     y_std[np.where(y_std==0)] = 1
@@ -491,12 +493,12 @@ class GPyRegression:
                 start = time.time()
                 if self.normalize:
                     y_mean = self.virtY[0].mean(axis=0)
-                    if not self.mad:
-                        y_std = self.virtY[0].std(axis=0)
+                    if self.mad:
+                        y_std = mad(self.virtY[0], axis=0)
                     elif self.mean_center:
                         y_std = 1
                     else:
-                        y_std = mad(self.virtY[0], axis=0)
+                        y_std = self.virtY[0].std(axis=0)
                     if np.any(y_std == 0):
                         logger.debug('Y has some zero sd {}'.format(y_std))
                         y_std[np.where(y_std==0)] = 1
@@ -527,12 +529,12 @@ class GPyRegression:
                 noise_prior = self.gp_params.get('noise_prior')
                 if self.normalize:
                     y_mean = self.virtY.mean(axis=0)
-                    if not self.mad:
-                        y_std = self.virtY.std(axis=0)
+                    if self.mad:
+                        y_std = mad(self.virtY, axis=0)
                     elif self.mean_center:
                         y_std = 1   
                     else:
-                        y_std = mad(self.virtY, axis=0)
+                        y_std = self.virtY.std(axis=0)
                     if np.any(y_std == 0):
                         logger.debug('Y has some zero sd {}'.format(y_std))
                         y_std[np.where(y_std==0)] = 1
@@ -562,12 +564,12 @@ class GPyRegression:
             start = time.time()
             if self.normalize:
                 y_mean = self.virtY[0].mean(axis=0)
-                if not self.mad:
-                    y_std = self.virtY[0].std(axis=0)
+                if self.mad:
+                    y_std = mad(self.virtY[0], axis=0)
                 elif self.mean_center:
                     y_std = 1
                 else:
-                    y_std = mad(self.virtY[0], axis=0)
+                    y_std = self.virtY[0].std(axis=0)
                 if np.any(y_std == 0):
                     logger.debug('Y has some zero sd {}'.format(y_std))
                     y_std[np.where(y_std==0)] = 1
