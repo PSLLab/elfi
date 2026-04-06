@@ -352,7 +352,7 @@ class GPyRegression:
                     'mean_function') is None:
                 self._kernel_is_default = True
         else:
-            kernel = self.gp_params.get('kernel')
+            kernel = self.gp_params.get('kernel').copy()
 
         self.kernel = kernel
 
@@ -660,7 +660,3 @@ class GPyRegression:
             kopy.gp_params['mean_function'] = self.gp_params['mean_function'].copy()
 
         return kopy
-
-    def __copy__(self):
-        """Return a copy of current instance."""
-        return self.copy()

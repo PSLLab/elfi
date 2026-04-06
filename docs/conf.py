@@ -33,11 +33,11 @@ if on_RTD:
         'scipy.sparse', 'scipy.special', 'matplotlib.pyplot', 'numpy.random', 'networkx',
         'ipyparallel', 'numpy.lib', 'numpy.lib.format', 'sklearn.linear_model',
         'sklearn.pipeline', 'sklearn.preprocessing', 'numdifftools', 'GPy.kern', 'GPy.models',
-        'sklearn.covariance', 'sklearn.exceptions'
+        'sklearn.covariance', 'sklearn.exceptions', 'arviz'
     ]
     sys.modules.update((mod_name, Mock()) for mod_name in MOCK_MODULES)
 
-    html_theme = 'default'
+    html_theme = 'sphinx_rtd_theme'
 
 else:
     html_theme = 'sphinx_rtd_theme'

@@ -1,6 +1,25 @@
 Changelog
 =========
 
+- Update surrogate model initialisation to use all initial evidence
+- Update BOLFI and BOLFIRE to use a shared sample class that returns individual chains in the arviz inference data
+- Use kernel copy to avoid pickle issue and allow BOLFI parallelisation with non-default kernel
+- Restrict matplotlib version < 3.9 for compatibility with GPy
+- Add option to use additive or multiplicative adjustment in any acquisition method
+- Add `arziv`-mocking to rtd-setup
+- Add convenience method for obtaining elfi samples as `InferenceData`` to be used with `arviz`
+- Improve `randmaxvar` batch acquisitions and initialisation by enabling sampling from prior
+- Drop official Python support for 3.7 and 3.8 as GPy is not officially supported for these versions
+- Enable using `maxiter` in `bo.utils.minimize`
+- Fix surrogate model copy operation
+- Fix typo in requirements.txt
+
+0.8.7 (2023-09-21)
+------------------
+- Update available methods list
+- Pin `numpy <= 1.24.0` due to `GPy`
+- Update RTD configuration
+
 0.8.6 (2023-03-07)
 ------------------
 - Fix broken 0.8.5 by adding missing `__init__.py` to elfi/methods/bsl/
