@@ -384,8 +384,8 @@ class BayesianOptimization(ParameterInference):
     def _allow_submit(self, batch_index):
         # Allow submitting freely as long we are still submitting initial evidence
         t = self._get_acquisition_index(batch_index)
-        # if t < 0:
-        #     return True
+        if t < 0:
+            return True
         
         if not super(BayesianOptimization, self)._allow_submit(batch_index):
             return False
