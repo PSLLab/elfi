@@ -242,6 +242,7 @@ class LCBSC(AcquisitionBase):
         self.name = 'lcbsc'
         self.label_fn = 'Confidence Bound'
         self.multiplier = multiplier
+        self.additive_cost = additive_cost
 
     @property
     def delta(self):
